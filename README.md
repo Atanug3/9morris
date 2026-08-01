@@ -2,6 +2,8 @@
 
 A mobile-friendly browser implementation of 9 Men's Morris using HTML, CSS, and vanilla JavaScript.
 
+See [SETUP.md](SETUP.md) for the complete Supabase, Google OAuth, GitHub OAuth, and deployment guide.
+
 ## Game modes
 
 - **One player vs Computer**
