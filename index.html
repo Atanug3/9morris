@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>9 Men's Morris</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="header">
+        <h1>9 Men's Morris</h1>
+        <p class="subtitle">A simple two-player local game in the browser.</p>
+      </header>
+
+      <section class="status-panel">
+        <div><strong>Turn:</strong> <span id="turn-indicator">Player 1</span></div>
+        <div><strong>Phase:</strong> <span id="phase-indicator">Placement</span></div>
+        <div id="status-message">Player 1, place a piece.</div>
+        <button id="reset-button" type="button">New Game</button>
+      </section>
+
+      <section class="board-wrapper">
+        <svg
+          id="board"
+          class="board"
+          viewBox="0 0 700 700"
+          role="img"
+          aria-label="9 Men's Morris board"
+        ></svg>
+      </section>
+
+      <section class="legend">
+        <div><span class="piece-swatch player1"></span> Player 1</div>
+        <div><span class="piece-swatch player2"></span> Player 2</div>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
