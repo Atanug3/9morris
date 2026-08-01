@@ -51,11 +51,18 @@ body {
   gap: 8px;
 }
 
-.mode-control {
+.mode-control,
+.sound-control {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+#sound-enabled {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
 }
 
 #game-mode {
@@ -88,12 +95,15 @@ body {
 
 #reset-button:focus-visible,
 #game-mode:focus-visible,
+#sound-enabled:focus-visible,
 .node:focus-visible {
   outline: 3px solid #2e8b57;
   outline-offset: 3px;
 }
 
 .board-wrapper {
+  width: 85%;
+  margin: 0 auto 16px;
   background: var(--panel);
   border: 2px solid #dbc8aa;
   border-radius: 12px;

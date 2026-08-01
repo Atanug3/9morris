@@ -75,6 +75,7 @@ const state = {
   phase: 'placement',
   piecesToPlace: { P1: 9, P2: 9 },
   piecesOnBoard: { P1: 0, P2: 0 },
+  moveHistory: { P1: [], P2: [] },
   selected: null,
   removalMode: false,
   winner: null,
@@ -86,7 +87,49 @@ const phaseIndicator = document.getElementById('phase-indicator');
 const statusMessage = document.getElementById('status-message');
 const resetButton = document.getElementById('reset-button');
 const gameModeSelect = document.getElementById('game-mode');
+const soundEnabled = document.getElementById('sound-enabled');
 let computerTimer = null;
+let audioContext = null;
+
+function playTone(frequency, duration, delay = 0, volume = 0.08) {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!soundEnabled.checked || !AudioContextClass) {
+    return;
+  }
+
+  if (audioContext === null) {
+    audioContext = new AudioContextClass();
+  }
+
+  if (audioContext.state === 'suspended') {
+    audioContext.resume();
+  }
+
+  const startTime = audioContext.currentTime + delay;
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(frequency, startTime);
+  gain.gain.setValueAtTime(volume, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+  oscillator.start(startTime);
+  oscillator.stop(startTime + duration);
+}
+
+function playSound(type) {
+  const sounds = {
+    move: [[330, 0.1, 0]],
+    mill: [[440, 0.14, 0], [660, 0.18, 0.1]],
+    capture: [[220, 0.2, 0]],
+    win: [[523, 0.16, 0], [659, 0.16, 0.14], [784, 0.28, 0.28]],
+  };
+
+  sounds[type].forEach(([frequency, duration, delay]) => {
+    playTone(frequency, duration, delay);
+  });
+}
 
 function playerLabel(player) {
   if (player === 'P1') {
@@ -117,16 +160,46 @@ function allPiecesInMills(player, board = state.board) {
   return positionsForPlayer.every((position) => isMill(position, player, board));
 }
 
-function canMove(from, to, player) {
-  if (state.board[from] !== player || state.board[to] !== null) {
+function wouldExceedBackAndForthLimit(player, from, to) {
+  const history = state.moveHistory[player];
+  if (history.length < 4) {
     return false;
   }
 
-  if (state.piecesOnBoard[player] === 3) {
+  const [first, second, third, fourth] = history.slice(-4);
+  return first.from === from
+    && first.to === to
+    && second.from === to
+    && second.to === from
+    && third.from === from
+    && third.to === to
+    && fourth.from === to
+    && fourth.to === from;
+}
+
+function recordMove(player, from, to) {
+  state.moveHistory[player].push({ from, to });
+  state.moveHistory[player] = state.moveHistory[player].slice(-4);
+}
+
+function canMoveOnBoard(board, from, to, player) {
+  if (board[from] !== player || board[to] !== null) {
+    return false;
+  }
+
+  if (wouldExceedBackAndForthLimit(player, from, to)) {
+    return false;
+  }
+
+  if (board.filter((value) => value === player).length === 3) {
     return true;
   }
 
   return adjacency[from].includes(to);
+}
+
+function canMove(from, to, player) {
+  return canMoveOnBoard(state.board, from, to, player);
 }
 
 function hasLegalMove(player) {
@@ -135,11 +208,9 @@ function hasLegalMove(player) {
     .filter((entry) => entry.value === player)
     .map((entry) => entry.index);
 
-  if (state.piecesOnBoard[player] === 3) {
-    return state.board.some((spot) => spot === null);
-  }
-
-  return occupied.some((from) => adjacency[from].some((to) => state.board[to] === null));
+  return occupied.some((from) => state.board.some(
+    (spot, to) => spot === null && canMove(from, to, player),
+  ));
 }
 
 function updatePhase() {
@@ -158,6 +229,7 @@ function checkWinner() {
   const opponent = otherPlayer(state.currentPlayer);
   if (state.piecesOnBoard[opponent] < 3 || !hasLegalMove(opponent)) {
     state.winner = state.currentPlayer;
+    playSound('win');
   }
 }
 
@@ -200,6 +272,7 @@ function removeOpponentPiece(position) {
   state.board[position] = null;
   state.piecesOnBoard[opponent] -= 1;
   state.removalMode = false;
+  playSound('capture');
   statusMessage.textContent = `${playerLabel(opponent)} lost a piece.`;
   switchTurn();
 }
@@ -213,9 +286,11 @@ function handlePlacement(position) {
   state.board[position] = state.currentPlayer;
   state.piecesToPlace[state.currentPlayer] -= 1;
   state.piecesOnBoard[state.currentPlayer] += 1;
+  playSound('move');
 
   if (isMill(position, state.currentPlayer)) {
     state.removalMode = true;
+    playSound('mill');
     statusMessage.textContent = `${playerLabel(state.currentPlayer)} formed a mill. Remove one opponent piece.`;
     render();
     return;
@@ -243,18 +318,27 @@ function handleMovement(position) {
     return;
   }
 
+  if (wouldExceedBackAndForthLimit(state.currentPlayer, state.selected, position)) {
+    statusMessage.textContent = 'That piece cannot move back and forth more than twice. Choose another move.';
+    return;
+  }
+
   if (!canMove(state.selected, position, state.currentPlayer)) {
     statusMessage.textContent = 'Illegal move for the current phase.';
     return;
   }
 
+  const movedFrom = state.selected;
   state.board[position] = state.currentPlayer;
-  state.board[state.selected] = null;
+  state.board[movedFrom] = null;
   const movedTo = position;
   state.selected = null;
+  recordMove(state.currentPlayer, movedFrom, movedTo);
+  playSound('move');
 
   if (isMill(movedTo, state.currentPlayer)) {
     state.removalMode = true;
+    playSound('mill');
     statusMessage.textContent = `${playerLabel(state.currentPlayer)} formed a mill. Remove one opponent piece.`;
     render();
     return;
@@ -361,6 +445,7 @@ function resetGame() {
   state.phase = 'placement';
   state.piecesToPlace = { P1: 9, P2: 9 };
   state.piecesOnBoard = { P1: 0, P2: 0 };
+  state.moveHistory = { P1: [], P2: [] };
   state.selected = null;
   state.removalMode = false;
   state.winner = null;
@@ -392,41 +477,30 @@ function countOpenMillOpportunities(board, player) {
   }).length;
 }
 
-function chooseComputerPlacement() {
-  const openPositions = state.board
-    .map((value, index) => value === null ? index : null)
+function millCompletingPlacements(board, player) {
+  return board
+    .map((value, position) => {
+      if (value !== null) {
+        return null;
+      }
+
+      const simulatedBoard = [...board];
+      simulatedBoard[position] = player;
+      return isMill(position, player, simulatedBoard) ? position : null;
+    })
     .filter((position) => position !== null);
-
-  return chooseBest(openPositions, (position) => {
-    const computerBoard = [...state.board];
-    computerBoard[position] = 'P2';
-    const opponentBoard = [...state.board];
-    opponentBoard[position] = 'P1';
-    let score = adjacency[position].length;
-
-    if (isMill(position, 'P2', computerBoard)) {
-      score += 1000;
-    }
-    if (isMill(position, 'P1', opponentBoard)) {
-      score += 800;
-    }
-
-    score += countOpenMillOpportunities(computerBoard, 'P2') * 30;
-    score -= countOpenMillOpportunities(computerBoard, 'P1') * 20;
-    return score;
-  });
 }
 
-function computerMoves() {
+function legalMovesForBoard(board, player) {
   const moves = [];
 
-  state.board.forEach((value, from) => {
-    if (value !== 'P2') {
+  board.forEach((value, from) => {
+    if (value !== player) {
       return;
     }
 
-    state.board.forEach((destinationValue, to) => {
-      if (destinationValue === null && canMove(from, to, 'P2')) {
+    board.forEach((destinationValue, to) => {
+      if (destinationValue === null && canMoveOnBoard(board, from, to, player)) {
         moves.push({ from, to });
       }
     });
@@ -435,36 +509,81 @@ function computerMoves() {
   return moves;
 }
 
+function countMillFormingMoves(board, player) {
+  return legalMovesForBoard(board, player).filter(({ from, to }) => {
+    const simulatedBoard = [...board];
+    simulatedBoard[from] = null;
+    simulatedBoard[to] = player;
+    return isMill(to, player, simulatedBoard);
+  }).length;
+}
+
+function countImmediateMillThreats(board, player) {
+  if (state.piecesToPlace[player] > 0) {
+    return millCompletingPlacements(board, player).length;
+  }
+
+  return countMillFormingMoves(board, player);
+}
+
+function chooseComputerPlacement() {
+  const openPositions = state.board
+    .map((value, index) => value === null ? index : null)
+    .filter((position) => position !== null);
+  const opponentMillPositions = new Set(millCompletingPlacements(state.board, 'P1'));
+
+  return chooseBest(openPositions, (position) => {
+    const computerBoard = [...state.board];
+    computerBoard[position] = 'P2';
+    let score = adjacency[position].length;
+
+    if (isMill(position, 'P2', computerBoard)) {
+      score += 10000;
+    }
+    if (opponentMillPositions.has(position)) {
+      score += 8000;
+    }
+
+    score += countOpenMillOpportunities(computerBoard, 'P2') * 30;
+    score -= millCompletingPlacements(computerBoard, 'P1').length * 1200;
+    return score;
+  });
+}
+
+function computerMoves() {
+  return legalMovesForBoard(state.board, 'P2');
+}
+
 function chooseComputerMove() {
+  const opponentThreatsBefore = countMillFormingMoves(state.board, 'P1');
+
   return chooseBest(computerMoves(), ({ from, to }) => {
     const computerBoard = [...state.board];
     computerBoard[from] = null;
     computerBoard[to] = 'P2';
-    const opponentBoard = [...state.board];
-    opponentBoard[from] = null;
-    opponentBoard[to] = 'P1';
+    const opponentThreatsAfter = countMillFormingMoves(computerBoard, 'P1');
     let score = adjacency[to].length;
 
     if (isMill(to, 'P2', computerBoard)) {
-      score += 1000;
-    }
-    if (isMill(to, 'P1', opponentBoard)) {
-      score += 500;
+      score += 10000;
     }
 
+    score += (opponentThreatsBefore - opponentThreatsAfter) * 3000;
+    score -= opponentThreatsAfter * 1500;
     score += countOpenMillOpportunities(computerBoard, 'P2') * 30;
-    score -= countOpenMillOpportunities(computerBoard, 'P1') * 20;
     return score;
   });
 }
 
 function chooseComputerRemoval() {
+  const opponentThreatsBefore = countImmediateMillThreats(state.board, 'P1');
+
   return chooseBest(removablePositions('P2'), (position) => {
     const boardAfterRemoval = [...state.board];
     boardAfterRemoval[position] = null;
-    const blockedThreats = countOpenMillOpportunities(state.board, 'P1')
-      - countOpenMillOpportunities(boardAfterRemoval, 'P1');
-    return blockedThreats * 100 + adjacency[position].length;
+    const blockedThreats = opponentThreatsBefore
+      - countImmediateMillThreats(boardAfterRemoval, 'P1');
+    return blockedThreats * 3000 + adjacency[position].length;
   });
 }
 
@@ -488,15 +607,19 @@ function performComputerTurn() {
   const move = chooseComputerMove();
   if (!move) {
     state.winner = 'P1';
+    playSound('win');
     render();
     return;
   }
 
   state.board[move.from] = null;
   state.board[move.to] = 'P2';
+  recordMove('P2', move.from, move.to);
+  playSound('move');
 
   if (isMill(move.to, 'P2')) {
     state.removalMode = true;
+    playSound('mill');
     render();
     return;
   }
