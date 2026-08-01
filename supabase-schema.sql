@@ -1,5 +1,3 @@
-create extension if not exists pgcrypto;
-
 create table if not exists public.games (
   id uuid primary key default gen_random_uuid(),
   room_code text not null unique,
@@ -46,7 +44,7 @@ begin
   end if;
 
   loop
-    v_room_code := upper(substr(encode(gen_random_bytes(4), 'hex'), 1, 6));
+    v_room_code := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
     begin
       return query
       insert into public.games (

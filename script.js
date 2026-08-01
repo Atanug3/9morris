@@ -128,6 +128,8 @@ let onlineChannel = null;
 let onlineSavePending = false;
 let onlineNotice = '';
 let onlineSaveTimer = null;
+let onlinePollTimer = null;
+let onlineReconnectTimer = null;
 let inviteHandled = false;
 let restoringRoom = false;
 
@@ -194,7 +196,7 @@ async function signIn(provider) {
 }
 
 async function signOut() {
-  await leaveOnlineGame(true);
+  await leaveOnlineGame(false);
   const { error } = await supabaseClient.auth.signOut();
   if (error) {
     statusMessage.textContent = `Sign-out failed: ${error.message}`;
@@ -703,6 +705,10 @@ function subscribeToOnlineGame(gameId) {
   if (onlineChannel) {
     supabaseClient.removeChannel(onlineChannel);
   }
+  if (onlineReconnectTimer !== null) {
+    window.clearTimeout(onlineReconnectTimer);
+    onlineReconnectTimer = null;
+  }
 
   onlineChannel = supabaseClient
     .channel(`game-${gameId}`)
@@ -732,11 +738,64 @@ function subscribeToOnlineGame(gameId) {
       },
     )
     .subscribe((status) => {
-      if (status === 'CHANNEL_ERROR') {
-        onlineNotice = 'The realtime connection failed. Reload the page to reconnect.';
+      if (status === 'SUBSCRIBED') {
+        onlineNotice = '';
+        startOnlinePolling();
         render();
+      } else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) {
+        onlineNotice = 'Realtime connection interrupted. Refreshing the room automatically...';
+        render();
+        scheduleOnlineReconnect(gameId);
       }
     });
+}
+
+function scheduleOnlineReconnect(gameId) {
+  if (onlineReconnectTimer !== null || !onlineGame) {
+    return;
+  }
+
+  onlineReconnectTimer = window.setTimeout(() => {
+    onlineReconnectTimer = null;
+    if (onlineGame?.id === gameId) {
+      subscribeToOnlineGame(gameId);
+    }
+  }, 3000);
+}
+
+function startOnlinePolling() {
+  if (onlinePollTimer !== null) {
+    window.clearInterval(onlinePollTimer);
+  }
+
+  onlinePollTimer = window.setInterval(refreshOnlineGame, 4000);
+}
+
+async function refreshOnlineGame() {
+  if (!onlineGame || onlineSavePending) {
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from('games')
+    .select('*')
+    .eq('id', onlineGame.id)
+    .single();
+
+  if (error) {
+    onlineNotice = `Unable to refresh the room: ${error.message}`;
+    render();
+    return;
+  }
+
+  if (
+    data.revision > onlineGame.revision
+    || data.status !== onlineGame.status
+    || data.player2 !== onlineGame.player2
+  ) {
+    onlineNotice = '';
+    applyOnlineGame(data, true);
+  }
 }
 
 async function restoreOnlineRoom(code) {
@@ -940,6 +999,14 @@ async function leaveOnlineGame(markAbandoned) {
     window.clearTimeout(onlineSaveTimer);
     onlineSaveTimer = null;
   }
+  if (onlinePollTimer !== null) {
+    window.clearInterval(onlinePollTimer);
+    onlinePollTimer = null;
+  }
+  if (onlineReconnectTimer !== null) {
+    window.clearTimeout(onlineReconnectTimer);
+    onlineReconnectTimer = null;
+  }
   setRoomInUrl(null);
 }
 
@@ -958,7 +1025,7 @@ async function copyRoomLink() {
 
 async function handleGameModeChange() {
   if (onlineGame) {
-    await leaveOnlineGame(true);
+    await leaveOnlineGame(false);
   }
 
   onlineNotice = '';
