@@ -14,6 +14,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   font-family: Arial, sans-serif;
@@ -28,7 +32,10 @@ body {
 }
 
 .header,
+.auth-panel,
+.user-panel,
 .status-panel,
+.online-panel,
 .legend {
   background: var(--panel);
   border: 2px solid #dbc8aa;
@@ -43,6 +50,44 @@ body {
 
 .subtitle {
   margin: 0;
+  color: var(--muted);
+}
+
+.auth-panel h2,
+.online-panel h2 {
+  margin: 0 0 8px;
+}
+
+.auth-panel p,
+.online-panel p {
+  margin: 8px 0;
+}
+
+.user-panel,
+.button-row,
+#online-lobby,
+#join-room-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.user-panel {
+  justify-content: space-between;
+}
+
+.online-panel {
+  display: grid;
+  gap: 12px;
+}
+
+#online-room {
+  display: grid;
+  gap: 8px;
+}
+
+.separator {
   color: var(--muted);
 }
 
@@ -74,12 +119,22 @@ body {
   color: var(--text);
 }
 
+#room-code-input {
+  width: 110px;
+  padding: 9px 10px;
+  border: 1px solid #b99c75;
+  border-radius: 6px;
+  text-transform: uppercase;
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+}
+
 #status-message {
   font-weight: 600;
   color: var(--accent);
 }
 
-#reset-button {
+button {
   width: fit-content;
   padding: 10px 14px;
   border: none;
@@ -89,13 +144,25 @@ body {
   cursor: pointer;
 }
 
-#reset-button:hover {
+button:hover:not(:disabled) {
   opacity: 0.92;
 }
 
-#reset-button:focus-visible,
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.secondary-button {
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+}
+
+button:focus-visible,
 #game-mode:focus-visible,
 #sound-enabled:focus-visible,
+#room-code-input:focus-visible,
 .node:focus-visible {
   outline: 3px solid #2e8b57;
   outline-offset: 3px;
@@ -166,4 +233,31 @@ body {
 
 .piece-swatch.player2 {
   background: var(--player2);
+}
+
+@media (max-width: 600px) {
+  .app {
+    padding: 12px;
+  }
+
+  .board-wrapper {
+    width: 100%;
+    padding: 8px;
+  }
+
+  #online-lobby,
+  #join-room-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  #room-code-input,
+  #join-room-form button,
+  #create-room-button {
+    width: 100%;
+  }
+
+  .separator {
+    text-align: center;
+  }
 }

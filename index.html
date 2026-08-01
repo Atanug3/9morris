@@ -10,44 +10,92 @@
     <main class="app">
       <header class="header">
         <h1>9 Men's Morris</h1>
-        <p class="subtitle">Play against the computer or share the board with another player.</p>
+        <p class="subtitle">Play against the computer, locally, or online with a friend.</p>
       </header>
 
-      <section class="status-panel">
-        <label class="mode-control" for="game-mode">
-          <strong>Game mode:</strong>
-          <select id="game-mode">
-            <option value="computer">One player vs Computer</option>
-            <option value="human">Two players</option>
-          </select>
-        </label>
-        <label class="sound-control" for="sound-enabled">
-          <strong>Sound:</strong>
-          <input id="sound-enabled" type="checkbox" checked />
-          On
-        </label>
-        <div><strong>Turn:</strong> <span id="turn-indicator">Player 1</span></div>
-        <div><strong>Phase:</strong> <span id="phase-indicator">Placement</span></div>
-        <div id="status-message">Player 1, place a piece.</div>
-        <button id="reset-button" type="button">New Game</button>
+      <section id="auth-panel" class="auth-panel">
+        <h2>Sign in to play</h2>
+        <p id="auth-message">Use your Google or GitHub account to access the game.</p>
+        <div class="button-row">
+          <button id="google-login" type="button">Continue with Google</button>
+          <button id="github-login" type="button">Continue with GitHub</button>
+        </div>
       </section>
 
-      <section class="board-wrapper">
-        <svg
-          id="board"
-          class="board"
-          viewBox="0 0 700 700"
-          role="img"
-          aria-label="9 Men's Morris board"
-        ></svg>
+      <section id="user-panel" class="user-panel" hidden>
+        <span>Signed in as <strong id="user-name"></strong></span>
+        <button id="logout-button" class="secondary-button" type="button">Sign out</button>
       </section>
 
-      <section class="legend">
-        <div><span class="piece-swatch player1"></span> Player 1</div>
-        <div><span class="piece-swatch player2"></span> Player 2</div>
-      </section>
+      <div id="game-content" hidden>
+        <section class="status-panel">
+          <label class="mode-control" for="game-mode">
+            <strong>Game mode:</strong>
+            <select id="game-mode">
+              <option value="computer">One player vs Computer</option>
+              <option value="human">Two players on this device</option>
+              <option value="online">Two players online</option>
+            </select>
+          </label>
+          <label class="sound-control" for="sound-enabled">
+            <strong>Sound:</strong>
+            <input id="sound-enabled" type="checkbox" checked />
+            On
+          </label>
+          <div><strong>Turn:</strong> <span id="turn-indicator">Player 1</span></div>
+          <div><strong>Phase:</strong> <span id="phase-indicator">Placement</span></div>
+          <div id="status-message">Player 1, place a piece.</div>
+          <button id="reset-button" type="button">New Game</button>
+        </section>
+
+        <section id="online-panel" class="online-panel" hidden>
+          <h2>Online game</h2>
+          <div id="online-lobby">
+            <button id="create-room-button" type="button">Create private room</button>
+            <span class="separator">or</span>
+            <form id="join-room-form">
+              <label for="room-code-input">Room code</label>
+              <input
+                id="room-code-input"
+                type="text"
+                maxlength="6"
+                autocomplete="off"
+                placeholder="ABC123"
+                required
+              />
+              <button type="submit">Join room</button>
+            </form>
+          </div>
+          <div id="online-room" hidden>
+            <div><strong>Room:</strong> <span id="room-code"></span></div>
+            <div><strong>You are:</strong> <span id="online-player"></span></div>
+            <div class="button-row">
+              <button id="copy-room-link" type="button">Copy invite link</button>
+              <button id="leave-room-button" class="secondary-button" type="button">Leave room</button>
+            </div>
+          </div>
+          <p id="online-message" aria-live="polite"></p>
+        </section>
+
+        <section class="board-wrapper">
+          <svg
+            id="board"
+            class="board"
+            viewBox="0 0 700 700"
+            role="img"
+            aria-label="9 Men's Morris board"
+          ></svg>
+        </section>
+
+        <section class="legend">
+          <div><span class="piece-swatch player1"></span> <span id="player1-label">Player 1</span></div>
+          <div><span class="piece-swatch player2"></span> <span id="player2-label">Player 2</span></div>
+        </section>
+      </div>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
     <script src="script.js"></script>
   </body>
 </html>

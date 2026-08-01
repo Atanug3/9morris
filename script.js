@@ -82,14 +82,54 @@ const state = {
 };
 
 const boardEl = document.getElementById('board');
+const authPanel = document.getElementById('auth-panel');
+const authMessage = document.getElementById('auth-message');
+const googleLoginButton = document.getElementById('google-login');
+const githubLoginButton = document.getElementById('github-login');
+const userPanel = document.getElementById('user-panel');
+const userName = document.getElementById('user-name');
+const logoutButton = document.getElementById('logout-button');
+const gameContent = document.getElementById('game-content');
 const turnIndicator = document.getElementById('turn-indicator');
 const phaseIndicator = document.getElementById('phase-indicator');
 const statusMessage = document.getElementById('status-message');
 const resetButton = document.getElementById('reset-button');
 const gameModeSelect = document.getElementById('game-mode');
 const soundEnabled = document.getElementById('sound-enabled');
+const onlinePanel = document.getElementById('online-panel');
+const onlineLobby = document.getElementById('online-lobby');
+const onlineRoom = document.getElementById('online-room');
+const onlineMessage = document.getElementById('online-message');
+const createRoomButton = document.getElementById('create-room-button');
+const joinRoomForm = document.getElementById('join-room-form');
+const roomCodeInput = document.getElementById('room-code-input');
+const roomCode = document.getElementById('room-code');
+const onlinePlayer = document.getElementById('online-player');
+const copyRoomLinkButton = document.getElementById('copy-room-link');
+const leaveRoomButton = document.getElementById('leave-room-button');
+const player1Label = document.getElementById('player1-label');
+const player2Label = document.getElementById('player2-label');
+const supabaseConfig = window.SUPABASE_CONFIG || {};
+const hasSupabaseConfig = Boolean(
+  supabaseConfig.url
+  && supabaseConfig.anonKey
+  && !supabaseConfig.url.startsWith('YOUR_')
+  && !supabaseConfig.anonKey.startsWith('YOUR_'),
+);
+const supabaseClient = hasSupabaseConfig
+  && window.supabase?.createClient
+  ? window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey)
+  : null;
 let computerTimer = null;
 let audioContext = null;
+let currentUser = null;
+let onlineGame = null;
+let onlineChannel = null;
+let onlineSavePending = false;
+let onlineNotice = '';
+let onlineSaveTimer = null;
+let inviteHandled = false;
+let restoringRoom = false;
 
 function playTone(frequency, duration, delay = 0, volume = 0.08) {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -131,7 +171,93 @@ function playSound(type) {
   });
 }
 
+function getUserDisplayName(user) {
+  return user?.user_metadata?.full_name
+    || user?.user_metadata?.user_name
+    || user?.user_metadata?.preferred_username
+    || user?.email?.split('@')[0]
+    || 'Player';
+}
+
+async function signIn(provider) {
+  authMessage.textContent = `Redirecting to ${provider === 'google' ? 'Google' : 'GitHub'}...`;
+  const { error } = await supabaseClient.auth.signInWithOAuth({
+    provider,
+    options: {
+      redirectTo: `${window.location.origin}${window.location.pathname}${window.location.search}`,
+    },
+  });
+
+  if (error) {
+    authMessage.textContent = `Sign-in failed: ${error.message}`;
+  }
+}
+
+async function signOut() {
+  await leaveOnlineGame(true);
+  const { error } = await supabaseClient.auth.signOut();
+  if (error) {
+    statusMessage.textContent = `Sign-out failed: ${error.message}`;
+  }
+}
+
+function updateAuthenticationUI(user) {
+  currentUser = user;
+  const signedIn = Boolean(user);
+  authPanel.hidden = signedIn;
+  userPanel.hidden = !signedIn;
+  gameContent.hidden = !signedIn;
+
+  if (signedIn) {
+    userName.textContent = getUserDisplayName(user);
+    const invitedRoom = new URLSearchParams(window.location.search).get('room');
+    if (invitedRoom && !inviteHandled && !onlineGame) {
+      inviteHandled = true;
+      roomCodeInput.value = invitedRoom.toUpperCase().slice(0, 6);
+      gameModeSelect.value = 'online';
+      resetBoardState();
+      restoreOnlineRoom(invitedRoom);
+    }
+    render();
+  } else {
+    userName.textContent = '';
+  }
+}
+
+async function initializeAuthentication() {
+  if (!hasSupabaseConfig) {
+    authMessage.textContent = 'Supabase is not configured yet. Add the project URL and anon key to supabase-config.js.';
+    googleLoginButton.disabled = true;
+    githubLoginButton.disabled = true;
+    return;
+  }
+
+  if (!supabaseClient) {
+    authMessage.textContent = 'The Supabase browser library could not be loaded. Check the network connection and reload.';
+    googleLoginButton.disabled = true;
+    githubLoginButton.disabled = true;
+    return;
+  }
+
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (error) {
+    authMessage.textContent = `Unable to read the login session: ${error.message}`;
+    return;
+  }
+
+  updateAuthenticationUI(data.session?.user || null);
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    updateAuthenticationUI(session?.user || null);
+  });
+}
+
 function playerLabel(player) {
+  if (state.gameMode === 'online' && onlineGame) {
+    return player === 'P1'
+      ? onlineGame.player1_name || 'Player 1'
+      : onlineGame.player2_name || 'Player 2';
+  }
+
   if (player === 'P1') {
     return 'Player 1';
   }
@@ -145,6 +271,14 @@ function otherPlayer(player) {
 
 function isComputerTurn() {
   return state.gameMode === 'computer' && state.currentPlayer === 'P2' && !state.winner;
+}
+
+function isOnlinePlayersTurn() {
+  return state.gameMode === 'online'
+    && onlineGame?.status === 'active'
+    && onlineGame.player === state.currentPlayer
+    && !onlineSavePending
+    && !state.winner;
 }
 
 function isMill(position, player, board = state.board) {
@@ -242,7 +376,7 @@ function switchTurn() {
     state.selected = null;
   }
 
-  render();
+  completeStateChange();
 }
 
 function removablePositions(player, board = state.board) {
@@ -292,7 +426,7 @@ function handlePlacement(position) {
     state.removalMode = true;
     playSound('mill');
     statusMessage.textContent = `${playerLabel(state.currentPlayer)} formed a mill. Remove one opponent piece.`;
-    render();
+    completeStateChange();
     return;
   }
 
@@ -340,7 +474,7 @@ function handleMovement(position) {
     state.removalMode = true;
     playSound('mill');
     statusMessage.textContent = `${playerLabel(state.currentPlayer)} formed a mill. Remove one opponent piece.`;
-    render();
+    completeStateChange();
     return;
   }
 
@@ -348,7 +482,11 @@ function handleMovement(position) {
 }
 
 function handlePositionClick(position) {
-  if (state.winner || isComputerTurn()) {
+  if (
+    state.winner
+    || isComputerTurn()
+    || (state.gameMode === 'online' && !isOnlinePlayersTurn())
+  ) {
     return;
   }
 
@@ -362,8 +500,6 @@ function handlePositionClick(position) {
   } else {
     handleMovement(position);
   }
-
-  render();
 }
 
 function renderBoard() {
@@ -407,6 +543,9 @@ function renderBoard() {
 
 function renderStatus() {
   turnIndicator.textContent = playerLabel(state.currentPlayer);
+  player1Label.textContent = playerLabel('P1');
+  player2Label.textContent = playerLabel('P2');
+  resetButton.disabled = state.gameMode === 'online';
   phaseIndicator.textContent = state.phase === 'placement'
     ? 'Placement'
     : state.piecesOnBoard[state.currentPlayer] === 3
@@ -415,6 +554,16 @@ function renderStatus() {
 
   if (state.winner) {
     statusMessage.textContent = `${playerLabel(state.winner)} wins!`;
+  } else if (state.gameMode === 'online' && !onlineGame) {
+    statusMessage.textContent = 'Create or join a private room to start an online game.';
+  } else if (state.gameMode === 'online' && onlineGame.status === 'waiting') {
+    statusMessage.textContent = 'Waiting for Player 2 to join the room.';
+  } else if (state.gameMode === 'online' && onlineGame.status === 'abandoned') {
+    statusMessage.textContent = 'The other player left this game.';
+  } else if (state.gameMode === 'online' && onlineSavePending) {
+    statusMessage.textContent = 'Saving your move...';
+  } else if (state.gameMode === 'online' && !isOnlinePlayersTurn()) {
+    statusMessage.textContent = `Waiting for ${playerLabel(state.currentPlayer)} to move.`;
   } else if (isComputerTurn()) {
     statusMessage.textContent = state.removalMode
       ? 'Computer formed a mill and is choosing a piece to remove.'
@@ -430,10 +579,28 @@ function renderStatus() {
 function render() {
   renderBoard();
   renderStatus();
+  updateOnlineUI();
   scheduleComputerTurn();
 }
 
+function completeStateChange() {
+  render();
+  if (state.gameMode === 'online') {
+    persistOnlineState();
+  }
+}
+
 function resetGame() {
+  if (state.gameMode === 'online') {
+    statusMessage.textContent = 'Online games cannot be reset unilaterally. Leave the room and create a new one.';
+    return;
+  }
+
+  resetBoardState();
+  render();
+}
+
+function resetBoardState() {
   if (computerTimer !== null) {
     window.clearTimeout(computerTimer);
     computerTimer = null;
@@ -449,6 +616,357 @@ function resetGame() {
   state.selected = null;
   state.removalMode = false;
   state.winner = null;
+}
+
+function serializeGameState() {
+  return {
+    board: [...state.board],
+    currentPlayer: state.currentPlayer,
+    phase: state.phase,
+    piecesToPlace: { ...state.piecesToPlace },
+    piecesOnBoard: { ...state.piecesOnBoard },
+    moveHistory: {
+      P1: state.moveHistory.P1.map((move) => ({ ...move })),
+      P2: state.moveHistory.P2.map((move) => ({ ...move })),
+    },
+    removalMode: state.removalMode,
+    winner: state.winner,
+  };
+}
+
+function applySerializedGameState(gameState) {
+  if (!gameState || !Array.isArray(gameState.board) || gameState.board.length !== 24) {
+    throw new Error('The online game returned an invalid board.');
+  }
+
+  state.board = [...gameState.board];
+  state.currentPlayer = gameState.currentPlayer;
+  state.phase = gameState.phase;
+  state.piecesToPlace = { ...gameState.piecesToPlace };
+  state.piecesOnBoard = { ...gameState.piecesOnBoard };
+  state.moveHistory = {
+    P1: (gameState.moveHistory?.P1 || []).map((move) => ({ ...move })),
+    P2: (gameState.moveHistory?.P2 || []).map((move) => ({ ...move })),
+  };
+  state.selected = null;
+  state.removalMode = Boolean(gameState.removalMode);
+  state.winner = gameState.winner || null;
+}
+
+function playerForOnlineGame(game) {
+  if (game.player1 === currentUser?.id) {
+    return 'P1';
+  }
+  if (game.player2 === currentUser?.id) {
+    return 'P2';
+  }
+  return null;
+}
+
+function setRoomInUrl(code) {
+  const url = new URL(window.location.href);
+  if (code) {
+    url.searchParams.set('room', code);
+  } else {
+    url.searchParams.delete('room');
+  }
+  window.history.replaceState({}, '', url);
+}
+
+function applyOnlineGame(game, playRemoteSound = false, preserveSavePending = false) {
+  if (onlineGame?.id === game.id && game.revision < onlineGame.revision) {
+    return;
+  }
+
+  const previousRevision = onlineGame?.revision ?? game.revision;
+  const isRemoteUpdate = !onlineSavePending;
+  const player = playerForOnlineGame(game);
+  if (!player) {
+    throw new Error('You are not a participant in this room.');
+  }
+
+  onlineGame = { ...game, player };
+  applySerializedGameState(game.game_state);
+  if (!preserveSavePending) {
+    onlineSavePending = false;
+  }
+  setRoomInUrl(game.room_code);
+
+  if (playRemoteSound && isRemoteUpdate && game.revision > previousRevision) {
+    playSound(state.winner ? 'win' : 'move');
+  }
+
+  render();
+}
+
+function subscribeToOnlineGame(gameId) {
+  if (onlineChannel) {
+    supabaseClient.removeChannel(onlineChannel);
+  }
+
+  onlineChannel = supabaseClient
+    .channel(`game-${gameId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'games',
+        filter: `id=eq.${gameId}`,
+      },
+      (payload) => {
+        const duplicateState = onlineGame
+          && payload.new.revision === onlineGame.revision
+          && payload.new.status === onlineGame.status
+          && payload.new.player2 === onlineGame.player2;
+        if (payload.new.revision < (onlineGame?.revision ?? -1) || duplicateState) {
+          return;
+        }
+
+        try {
+          applyOnlineGame(payload.new, true, onlineSavePending);
+        } catch (error) {
+          onlineNotice = error.message;
+          render();
+        }
+      },
+    )
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR') {
+        onlineNotice = 'The realtime connection failed. Reload the page to reconnect.';
+        render();
+      }
+    });
+}
+
+async function restoreOnlineRoom(code) {
+  if (!supabaseClient || onlineGame || restoringRoom) {
+    return;
+  }
+
+  restoringRoom = true;
+  const normalizedCode = code.trim().toUpperCase();
+  const { data, error } = await supabaseClient
+    .from('games')
+    .select('*')
+    .eq('room_code', normalizedCode)
+    .maybeSingle();
+  restoringRoom = false;
+
+  if (error) {
+    onlineNotice = `Could not restore the room: ${error.message}`;
+    render();
+    return;
+  }
+
+  if (data) {
+    onlineNotice = '';
+    applyOnlineGame(data);
+    subscribeToOnlineGame(data.id);
+  }
+}
+
+function updateOnlineUI() {
+  const onlineMode = state.gameMode === 'online';
+  onlinePanel.hidden = !onlineMode;
+  onlineLobby.hidden = Boolean(onlineGame);
+  onlineRoom.hidden = !onlineGame;
+
+  if (!onlineMode) {
+    return;
+  }
+
+  if (onlineGame) {
+    roomCode.textContent = onlineGame.room_code;
+    onlinePlayer.textContent = `${playerLabel(onlineGame.player)} (${onlineGame.player})`;
+  }
+
+  if (onlineNotice) {
+    onlineMessage.textContent = onlineNotice;
+  } else if (!onlineGame) {
+    onlineMessage.textContent = 'Create a room and share its link, or enter a friend’s room code.';
+  } else if (onlineGame.status === 'waiting') {
+    onlineMessage.textContent = 'Share the room code or invite link with Player 2.';
+  } else if (onlineGame.status === 'active') {
+    onlineMessage.textContent = 'Both players are connected. Moves synchronize automatically.';
+  } else if (onlineGame.status === 'finished') {
+    onlineMessage.textContent = 'This game has finished.';
+  } else {
+    onlineMessage.textContent = 'This room is no longer active.';
+  }
+}
+
+async function createOnlineRoom() {
+  onlineNotice = 'Creating room...';
+  createRoomButton.disabled = true;
+  render();
+  resetBoardState();
+
+  const { data, error } = await supabaseClient
+    .rpc('create_game', {
+      p_initial_state: serializeGameState(),
+      p_display_name: getUserDisplayName(currentUser),
+    })
+    .single();
+
+  createRoomButton.disabled = false;
+  if (error) {
+    onlineNotice = `Could not create the room: ${error.message}`;
+    render();
+    return;
+  }
+
+  onlineNotice = '';
+  applyOnlineGame(data);
+  subscribeToOnlineGame(data.id);
+}
+
+async function joinOnlineRoom(code) {
+  const normalizedCode = code.trim().toUpperCase();
+  if (!/^[A-F0-9]{6}$/.test(normalizedCode)) {
+    onlineNotice = 'Enter the six-character room code.';
+    render();
+    return;
+  }
+
+  onlineNotice = 'Joining room...';
+  render();
+
+  const { data, error } = await supabaseClient
+    .rpc('join_game', {
+      p_room_code: normalizedCode,
+      p_display_name: getUserDisplayName(currentUser),
+    })
+    .single();
+
+  if (error) {
+    onlineNotice = `Could not join the room: ${error.message}`;
+    render();
+    return;
+  }
+
+  onlineNotice = '';
+  applyOnlineGame(data);
+  subscribeToOnlineGame(data.id);
+}
+
+async function persistOnlineState() {
+  if (!onlineGame || onlineGame.status !== 'active' || onlineSavePending) {
+    return;
+  }
+
+  onlineSavePending = true;
+  onlineNotice = '';
+  if (onlineSaveTimer !== null) {
+    window.clearTimeout(onlineSaveTimer);
+  }
+  onlineSaveTimer = window.setTimeout(recoverStalledOnlineSave, 12000);
+  render();
+
+  const { data, error } = await supabaseClient
+    .rpc('submit_game_state', {
+      p_game_id: onlineGame.id,
+      p_expected_revision: onlineGame.revision,
+      p_game_state: serializeGameState(),
+      p_status: state.winner ? 'finished' : 'active',
+    })
+    .single();
+
+  window.clearTimeout(onlineSaveTimer);
+  onlineSaveTimer = null;
+  if (!error) {
+    applyOnlineGame(data);
+    return;
+  }
+
+  onlineNotice = `Your move was not saved: ${error.message}`;
+  onlineSavePending = false;
+  const { data: latestGame, error: refreshError } = await supabaseClient
+    .from('games')
+    .select('*')
+    .eq('id', onlineGame.id)
+    .single();
+
+  if (refreshError) {
+    onlineNotice += ` Unable to refresh the room: ${refreshError.message}`;
+    render();
+    return;
+  }
+
+  applyOnlineGame(latestGame);
+}
+
+async function recoverStalledOnlineSave() {
+  onlineSaveTimer = null;
+  if (!onlineGame || !onlineSavePending) {
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from('games')
+    .select('*')
+    .eq('id', onlineGame.id)
+    .single();
+
+  onlineSavePending = false;
+  if (error) {
+    onlineNotice = `The move is taking too long and the room could not be refreshed: ${error.message}`;
+    render();
+    return;
+  }
+
+  onlineNotice = 'The connection was refreshed after a delayed save.';
+  applyOnlineGame(data);
+}
+
+async function leaveOnlineGame(markAbandoned) {
+  if (onlineGame && markAbandoned && supabaseClient) {
+    const { error } = await supabaseClient.rpc('leave_game', {
+      p_game_id: onlineGame.id,
+    });
+    if (error) {
+      onlineNotice = `Could not close the room: ${error.message}`;
+    }
+  }
+
+  if (onlineChannel && supabaseClient) {
+    await supabaseClient.removeChannel(onlineChannel);
+  }
+
+  onlineChannel = null;
+  onlineGame = null;
+  onlineSavePending = false;
+  if (onlineSaveTimer !== null) {
+    window.clearTimeout(onlineSaveTimer);
+    onlineSaveTimer = null;
+  }
+  setRoomInUrl(null);
+}
+
+async function copyRoomLink() {
+  const url = new URL(window.location.href);
+  url.searchParams.set('room', onlineGame.room_code);
+
+  try {
+    await navigator.clipboard.writeText(url.toString());
+    onlineNotice = 'Invite link copied.';
+  } catch (error) {
+    onlineNotice = `Could not copy the invite link: ${error.message}`;
+  }
+  render();
+}
+
+async function handleGameModeChange() {
+  if (onlineGame) {
+    await leaveOnlineGame(true);
+  }
+
+  onlineNotice = '';
+  if (gameModeSelect.value !== 'online') {
+    roomCodeInput.value = '';
+    setRoomInUrl(null);
+  }
+  resetBoardState();
   render();
 }
 
@@ -620,7 +1138,7 @@ function performComputerTurn() {
   if (isMill(move.to, 'P2')) {
     state.removalMode = true;
     playSound('mill');
-    render();
+    completeStateChange();
     return;
   }
 
@@ -636,5 +1154,19 @@ function scheduleComputerTurn() {
 }
 
 resetButton.addEventListener('click', resetGame);
-gameModeSelect.addEventListener('change', resetGame);
-render();
+gameModeSelect.addEventListener('change', handleGameModeChange);
+googleLoginButton.addEventListener('click', () => signIn('google'));
+githubLoginButton.addEventListener('click', () => signIn('github'));
+logoutButton.addEventListener('click', signOut);
+createRoomButton.addEventListener('click', createOnlineRoom);
+joinRoomForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  joinOnlineRoom(roomCodeInput.value);
+});
+copyRoomLinkButton.addEventListener('click', copyRoomLink);
+leaveRoomButton.addEventListener('click', async () => {
+  await leaveOnlineGame(true);
+  resetBoardState();
+  render();
+});
+initializeAuthentication();
