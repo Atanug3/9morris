@@ -71,6 +71,7 @@ const boardLines = [
 const state = {
   board: Array(24).fill(null),
   currentPlayer: 'P1',
+  gameMode: 'computer',
   phase: 'placement',
   piecesToPlace: { P1: 9, P2: 9 },
   piecesOnBoard: { P1: 0, P2: 0 },
@@ -84,26 +85,36 @@ const turnIndicator = document.getElementById('turn-indicator');
 const phaseIndicator = document.getElementById('phase-indicator');
 const statusMessage = document.getElementById('status-message');
 const resetButton = document.getElementById('reset-button');
+const gameModeSelect = document.getElementById('game-mode');
+let computerTimer = null;
 
 function playerLabel(player) {
-  return player === 'P1' ? 'Player 1' : 'Player 2';
+  if (player === 'P1') {
+    return 'Player 1';
+  }
+
+  return state.gameMode === 'computer' ? 'Computer' : 'Player 2';
 }
 
 function otherPlayer(player) {
   return player === 'P1' ? 'P2' : 'P1';
 }
 
+function isComputerTurn() {
+  return state.gameMode === 'computer' && state.currentPlayer === 'P2' && !state.winner;
+}
+
 function isMill(position, player, board = state.board) {
   return mills.some((mill) => mill.includes(position) && mill.every((p) => board[p] === player));
 }
 
-function allPiecesInMills(player) {
-  const positionsForPlayer = state.board
+function allPiecesInMills(player, board = state.board) {
+  const positionsForPlayer = board
     .map((value, index) => ({ value, index }))
     .filter((entry) => entry.value === player)
     .map((entry) => entry.index);
 
-  return positionsForPlayer.every((position) => isMill(position, player));
+  return positionsForPlayer.every((position) => isMill(position, player, board));
 }
 
 function canMove(from, to, player) {
@@ -160,6 +171,18 @@ function switchTurn() {
   }
 
   render();
+}
+
+function removablePositions(player, board = state.board) {
+  const opponent = otherPlayer(player);
+  const opponentPositions = board
+    .map((value, index) => value === opponent ? index : null)
+    .filter((position) => position !== null);
+  const positionsOutsideMills = opponentPositions.filter(
+    (position) => !isMill(position, opponent, board),
+  );
+
+  return positionsOutsideMills.length > 0 ? positionsOutsideMills : opponentPositions;
 }
 
 function removeOpponentPiece(position) {
@@ -241,7 +264,7 @@ function handleMovement(position) {
 }
 
 function handlePositionClick(position) {
-  if (state.winner) {
+  if (state.winner || isComputerTurn()) {
     return;
   }
 
@@ -308,6 +331,10 @@ function renderStatus() {
 
   if (state.winner) {
     statusMessage.textContent = `${playerLabel(state.winner)} wins!`;
+  } else if (isComputerTurn()) {
+    statusMessage.textContent = state.removalMode
+      ? 'Computer formed a mill and is choosing a piece to remove.'
+      : 'Computer is thinking...';
   } else if (!state.removalMode && state.phase === 'placement') {
     statusMessage.textContent = `${playerLabel(state.currentPlayer)}, place a piece.`;
   } else if (!state.removalMode && state.phase === 'movement') {
@@ -319,11 +346,18 @@ function renderStatus() {
 function render() {
   renderBoard();
   renderStatus();
+  scheduleComputerTurn();
 }
 
 function resetGame() {
+  if (computerTimer !== null) {
+    window.clearTimeout(computerTimer);
+    computerTimer = null;
+  }
+
   state.board = Array(24).fill(null);
   state.currentPlayer = 'P1';
+  state.gameMode = gameModeSelect.value;
   state.phase = 'placement';
   state.piecesToPlace = { P1: 9, P2: 9 };
   state.piecesOnBoard = { P1: 0, P2: 0 };
@@ -333,5 +367,151 @@ function resetGame() {
   render();
 }
 
+function chooseBest(options, scoreOption) {
+  let bestScore = -Infinity;
+  let bestOptions = [];
+
+  options.forEach((option) => {
+    const score = scoreOption(option);
+    if (score > bestScore) {
+      bestScore = score;
+      bestOptions = [option];
+    } else if (score === bestScore) {
+      bestOptions.push(option);
+    }
+  });
+
+  return bestOptions[Math.floor(Math.random() * bestOptions.length)];
+}
+
+function countOpenMillOpportunities(board, player) {
+  return mills.filter((mill) => {
+    const playerPieces = mill.filter((position) => board[position] === player).length;
+    const openPositions = mill.filter((position) => board[position] === null).length;
+    return playerPieces === 2 && openPositions === 1;
+  }).length;
+}
+
+function chooseComputerPlacement() {
+  const openPositions = state.board
+    .map((value, index) => value === null ? index : null)
+    .filter((position) => position !== null);
+
+  return chooseBest(openPositions, (position) => {
+    const computerBoard = [...state.board];
+    computerBoard[position] = 'P2';
+    const opponentBoard = [...state.board];
+    opponentBoard[position] = 'P1';
+    let score = adjacency[position].length;
+
+    if (isMill(position, 'P2', computerBoard)) {
+      score += 1000;
+    }
+    if (isMill(position, 'P1', opponentBoard)) {
+      score += 800;
+    }
+
+    score += countOpenMillOpportunities(computerBoard, 'P2') * 30;
+    score -= countOpenMillOpportunities(computerBoard, 'P1') * 20;
+    return score;
+  });
+}
+
+function computerMoves() {
+  const moves = [];
+
+  state.board.forEach((value, from) => {
+    if (value !== 'P2') {
+      return;
+    }
+
+    state.board.forEach((destinationValue, to) => {
+      if (destinationValue === null && canMove(from, to, 'P2')) {
+        moves.push({ from, to });
+      }
+    });
+  });
+
+  return moves;
+}
+
+function chooseComputerMove() {
+  return chooseBest(computerMoves(), ({ from, to }) => {
+    const computerBoard = [...state.board];
+    computerBoard[from] = null;
+    computerBoard[to] = 'P2';
+    const opponentBoard = [...state.board];
+    opponentBoard[from] = null;
+    opponentBoard[to] = 'P1';
+    let score = adjacency[to].length;
+
+    if (isMill(to, 'P2', computerBoard)) {
+      score += 1000;
+    }
+    if (isMill(to, 'P1', opponentBoard)) {
+      score += 500;
+    }
+
+    score += countOpenMillOpportunities(computerBoard, 'P2') * 30;
+    score -= countOpenMillOpportunities(computerBoard, 'P1') * 20;
+    return score;
+  });
+}
+
+function chooseComputerRemoval() {
+  return chooseBest(removablePositions('P2'), (position) => {
+    const boardAfterRemoval = [...state.board];
+    boardAfterRemoval[position] = null;
+    const blockedThreats = countOpenMillOpportunities(state.board, 'P1')
+      - countOpenMillOpportunities(boardAfterRemoval, 'P1');
+    return blockedThreats * 100 + adjacency[position].length;
+  });
+}
+
+function performComputerTurn() {
+  computerTimer = null;
+
+  if (!isComputerTurn()) {
+    return;
+  }
+
+  if (state.removalMode) {
+    removeOpponentPiece(chooseComputerRemoval());
+    return;
+  }
+
+  if (state.phase === 'placement') {
+    handlePlacement(chooseComputerPlacement());
+    return;
+  }
+
+  const move = chooseComputerMove();
+  if (!move) {
+    state.winner = 'P1';
+    render();
+    return;
+  }
+
+  state.board[move.from] = null;
+  state.board[move.to] = 'P2';
+
+  if (isMill(move.to, 'P2')) {
+    state.removalMode = true;
+    render();
+    return;
+  }
+
+  switchTurn();
+}
+
+function scheduleComputerTurn() {
+  if (!isComputerTurn() || computerTimer !== null) {
+    return;
+  }
+
+  computerTimer = window.setTimeout(performComputerTurn, 500);
+}
+
 resetButton.addEventListener('click', resetGame);
+gameModeSelect.addEventListener('change', resetGame);
 render();

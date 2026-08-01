@@ -51,6 +51,22 @@ body {
   gap: 8px;
 }
 
+.mode-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+#game-mode {
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #b99c75;
+  border-radius: 6px;
+  background: white;
+  color: var(--text);
+}
+
 #status-message {
   font-weight: 600;
   color: var(--accent);
@@ -68,6 +84,13 @@ body {
 
 #reset-button:hover {
   opacity: 0.92;
+}
+
+#reset-button:focus-visible,
+#game-mode:focus-visible,
+.node:focus-visible {
+  outline: 3px solid #2e8b57;
+  outline-offset: 3px;
 }
 
 .board-wrapper {

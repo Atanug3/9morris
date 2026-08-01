@@ -1,6 +1,6 @@
 # 9 Men's Morris
 
-A simple browser-based two-player implementation of 9 Men's Morris using HTML, CSS, and vanilla JavaScript.
+A browser-based implementation of 9 Men's Morris using HTML, CSS, and vanilla JavaScript. It supports playing against the computer or sharing the same device with another player.
 
 ## How to run
 
@@ -11,7 +11,9 @@ No build step or server is required.
 
 ## Gameplay
 
-- Two players share the same device.
+- Choose **One player vs Computer** or **Two players** from the game-mode selector.
+- In one-player mode, Player 1 plays against a computer opponent that forms mills, blocks threats, and chooses from valid moves.
+- In two-player mode, both players share the same device.
 - During the **placement phase**, players take turns placing their 9 pieces.
 - Forming a **mill** allows the current player to remove one opponent piece.
 - After placement, the game enters the **movement phase**, where pieces move to adjacent connected positions.

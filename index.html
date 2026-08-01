@@ -10,10 +10,17 @@
     <main class="app">
       <header class="header">
         <h1>9 Men's Morris</h1>
-        <p class="subtitle">A simple two-player local game in the browser.</p>
+        <p class="subtitle">Play against the computer or share the board with another player.</p>
       </header>
 
       <section class="status-panel">
+        <label class="mode-control" for="game-mode">
+          <strong>Game mode:</strong>
+          <select id="game-mode">
+            <option value="computer">One player vs Computer</option>
+            <option value="human">Two players</option>
+          </select>
+        </label>
         <div><strong>Turn:</strong> <span id="turn-indicator">Player 1</span></div>
         <div><strong>Phase:</strong> <span id="phase-indicator">Placement</span></div>
         <div id="status-message">Player 1, place a piece.</div>
