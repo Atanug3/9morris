@@ -1,0 +1,8 @@
+{
+  "name": "9morris-personal",
+  "compatibility_date": "2026-08-01",
+  "workers_dev": true,
+  "assets": {
+    "directory": "."
+  }
+}
