@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+#
+# pre-commit: warn on binary files, BLOCK commits containing oversized files.
+#   - Files > HARD_LIMIT  -> commit is aborted (error), matches GitHub's 100 MB wall.
+#   - Files > WARN_LIMIT  -> warning only.
+#   - Newly added binary files -> warning (in case you didn't mean to commit them).
+#
+# Override limits (bytes) via env if desired:
+#   HARD_LIMIT_BYTES, WARN_LIMIT_BYTES
+#
+set -u
+
+HARD_LIMIT=${HARD_LIMIT_BYTES:-104857600}   # 100 MB
+WARN_LIMIT=${WARN_LIMIT_BYTES:-52428800}    #  50 MB
+
+RED=$'\033[31m'; YEL=$'\033[33m'; CYN=$'\033[36m'; RST=$'\033[0m'
+
+human() { # bytes -> human readable
+  local b=$1
+  if   [ "$b" -ge 1073741824 ]; then awk "BEGIN{printf \"%.1f GB\", $b/1073741824}"
+  elif [ "$b" -ge 1048576 ];    then awk "BEGIN{printf \"%.1f MB\", $b/1048576}"
+  elif [ "$b" -ge 1024 ];       then awk "BEGIN{printf \"%.1f KB\", $b/1024}"
+  else echo "${b} B"; fi
+}
+
+errors=()
+warns_size=()
+warns_bin=()
+
+# --- Size checks on staged (added/copied/modified) files ---
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  # staged blob size (bytes)
+  size=$(git cat-file -s ":$file" 2>/dev/null) || continue
+  if   [ "$size" -gt "$HARD_LIMIT" ]; then errors+=("$file ($(human "$size"))")
+  elif [ "$size" -gt "$WARN_LIMIT" ]; then warns_size+=("$file ($(human "$size"))")
+  fi
+done < <(git diff --cached --name-only --diff-filter=ACM)
+
+# --- Binary detection on newly ADDED files (numstat shows '-' for binary) ---
+while IFS=$'\t' read -r added deleted path; do
+  [ -z "${path:-}" ] && continue
+  if [ "$added" = "-" ] && [ "$deleted" = "-" ]; then
+    warns_bin+=("$path")
+  fi
+done < <(git diff --cached --numstat --diff-filter=A)
+
+status=0
+
+if [ ${#warns_bin[@]} -gt 0 ]; then
+  echo "${YEL}⚠  Binary file(s) staged:${RST}"
+  for f in "${warns_bin[@]}"; do echo "   ${YEL}• $f${RST}"; done
+  echo "   ${CYN}If unintended, unstage with: git restore --staged <file>${RST}"
+fi
+
+if [ ${#warns_size[@]} -gt 0 ]; then
+  echo "${YEL}⚠  Large file(s) over $(human "$WARN_LIMIT") (GitHub warns at 50 MB):${RST}"
+  for f in "${warns_size[@]}"; do echo "   ${YEL}• $f${RST}"; done
+fi
+
+if [ ${#errors[@]} -gt 0 ]; then
+  echo "${RED}✖ COMMIT BLOCKED — file(s) exceed $(human "$HARD_LIMIT") (GitHub hard limit):${RST}"
+  for f in "${errors[@]}"; do echo "   ${RED}• $f${RST}"; done
+  echo "   ${CYN}Fix: remove the file, use Git LFS, or store it in cloud (see repo guide).${RST}"
+  echo "   ${CYN}Bypass (NOT recommended): git commit --no-verify${RST}"
+  status=1
+fi
+
+exit $status
