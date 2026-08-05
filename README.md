@@ -99,6 +99,16 @@ The personal repository triggers the automatic Cloudflare deployment.
 
 Players can reload an active room using its invite URL.
 
+## Git hooks
+
+This repo ships versioned hooks in `.githooks/` (e.g. a `pre-commit` that warns on binary files and blocks files over 100 MB). Git does not auto-enable hooks from a custom path, so after cloning run this once:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+See [.githooks/README.md](.githooks/README.md) for details.
+
 ## Security note
 
 Supabase enforces authentication, room membership, turn ownership, and optimistic revision checks. Morris move legality is also checked by the browser game engine; this project is intended for friendly play rather than adversarial or prize-based competition.
