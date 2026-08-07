@@ -1,0 +1,67 @@
+# ---- Secrets (never commit) ----
+.env
+*.env
+!.env.example
+*.pem
+*.key
+*.pfx
+id_rsa*
+secrets.*
+credentials.*
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.swp
+
+# ---- Dependencies / build output ----
+node_modules/
+dist/
+build/
+out/
+bin/
+obj/
+target/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ---- Logs / temp ----
+*.log
+*.tmp
+*.cache
+
+# ---- Large media & archives (keep out of git; use cloud/LFS instead) ----
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+*.iso
+*.dmg
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.wav
+*.psd
+*.sketch
+*.bak
+
+# ---- Datasets / model binaries (use Git LFS or external storage) ----
+*.csv
+*.parquet
+*.sqlite
+*.db
+*.bin
+*.onnx
+*.gguf
+*.safetensors
+*.pt
+*.pth
+*.h5

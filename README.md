@@ -112,6 +112,16 @@ This runs the browser action-boundary test and the pgTAP database rule/security 
 See [SECURITY_TEST_PLAN.md](SECURITY_TEST_PLAN.md) for staging, production, privacy,
 concurrency, abuse, and go-live coverage.
 
+## Git hooks
+
+This repo ships versioned hooks in `.githooks/` (e.g. a `pre-commit` that warns on binary files and blocks files over 100 MB). Git does not auto-enable hooks from a custom path, so after cloning run this once:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+See [.githooks/README.md](.githooks/README.md) for details.
+
 ## Security note
 
 For online games, Supabase computes the resulting state from a small action (`place`, `move`, or `remove`). It enforces authentication, room membership, turn ownership, revision ordering, adjacency, flying, repetition, mills, captures, phase changes, and wins. The browser cannot replace the stored board.
