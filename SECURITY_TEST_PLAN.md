@@ -38,7 +38,7 @@ Protected assets:
 | RLS-01 | Select a game as a non-participant | Zero rows | pgTAP |
 | RLS-02 | Check anonymous read and authenticated update grants | Denied | pgTAP |
 | API-01 | Check private helper schema access | Denied | pgTAP |
-| API-02 | Check legacy whole-state RPC during compatibility rollout | Present and executable by authenticated clients | pgTAP |
+| API-02 | Check legacy whole-state RPC | Absent | pgTAP |
 | INIT-01 | Create a room with a forged initial board and winner | Canonical empty board is stored | pgTAP |
 | RULE-01 | Legal placement and alternating turns | Accepted | pgTAP |
 | RULE-02 | Out-of-turn placement | Rejected | pgTAP |
@@ -67,12 +67,6 @@ supabase start
 
 These tests require real OAuth sessions, HTTP, Realtime, or platform controls and are
 not fully represented by direct SQL tests.
-
-The server-authoritative rollout is intentionally two-phase. The first migration adds
-`submit_game_action` while temporarily retaining `submit_game_state` for already-deployed
-clients. After the new browser client is deployed and verified, a separate cleanup
-migration must revoke and drop `submit_game_state`; the final go-live criteria below
-apply after that cleanup migration.
 
 | ID | Priority | Procedure | Expected result |
 |---|---|---|---|

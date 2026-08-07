@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(35);
+select plan(34);
 
 insert into auth.users (
   id, email, aud, role, raw_app_meta_data, raw_user_meta_data, created_at, updated_at
@@ -66,16 +66,8 @@ select ok(
   'authoritative action function exists'
 );
 select ok(
-  to_regprocedure('public.submit_game_state(uuid,integer,jsonb,text)') is not null,
-  'legacy whole-state function remains available during client rollout'
-);
-select ok(
-  has_function_privilege(
-    'authenticated',
-    'public.submit_game_state(uuid,integer,jsonb,text)',
-    'EXECUTE'
-  ),
-  'authenticated clients can use the legacy function during rollout'
+  to_regprocedure('public.submit_game_state(uuid,integer,jsonb,text)') is null,
+  'legacy whole-state function is removed'
 );
 select ok(
   not has_table_privilege('authenticated', 'public.games', 'UPDATE'),
