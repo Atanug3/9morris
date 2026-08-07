@@ -14,12 +14,17 @@ All players must sign in with Google or GitHub. Online authentication, rooms, pe
 
 ## Rules
 
-- During the **placement phase**, players take turns placing their 9 pieces.
+- Players initially take turns placing pieces on empty points.
+- After placing their first **3 pieces**, a player may either place another piece or move
+  one existing piece to an adjacent connected point on each turn.
 - Forming a **mill** allows the current player to remove one opponent piece.
-- During the **movement phase**, pieces move to adjacent connected positions.
-- A player with only 3 pieces may **fly** to any open position.
+- Placement continues until each player has placed all 9 pieces; movement remains
+  available throughout this mixed stage.
+- A player with only 3 pieces may **fly** to any open position only after all their pieces
+  have been placed.
 - The same piece may move back and forth for at most two consecutive cycles.
-- A player wins when the opponent has fewer than 3 pieces or no legal moves.
+- A player wins when the opponent has fewer than 3 pieces or no legal move after placing
+  all their pieces.
 
 ## Supabase setup
 

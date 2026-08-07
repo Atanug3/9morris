@@ -327,11 +327,18 @@ function canMoveOnBoard(board, from, to, player) {
     return false;
   }
 
-  if (board.filter((value) => value === player).length === 3) {
+  if (
+    state.piecesToPlace[player] === 0
+    && board.filter((value) => value === player).length === 3
+  ) {
     return true;
   }
 
   return adjacency[from].includes(to);
+}
+
+function hasPlacedThreePieces(player) {
+  return 9 - state.piecesToPlace[player] >= 3;
 }
 
 function canMove(from, to, player) {
@@ -358,11 +365,11 @@ function updatePhase() {
 }
 
 function checkWinner() {
-  if (state.phase === 'placement') {
+  const opponent = otherPlayer(state.currentPlayer);
+  if (state.piecesToPlace[opponent] > 0) {
     return;
   }
 
-  const opponent = otherPlayer(state.currentPlayer);
   if (state.piecesOnBoard[opponent] < 3 || !hasLegalMove(opponent)) {
     state.winner = state.currentPlayer;
     playSound('win');
@@ -503,10 +510,22 @@ function handlePositionClick(position) {
   }
 
   if (state.phase === 'placement') {
-    handlePlacement(position);
-  } else {
-    handleMovement(position);
+    if (
+      state.piecesToPlace[state.currentPlayer] > 0
+      && state.selected === null
+      && state.board[position] === null
+    ) {
+      handlePlacement(position);
+      return;
+    }
+
+    if (!hasPlacedThreePieces(state.currentPlayer)) {
+      statusMessage.textContent = 'Place three pieces before moving one.';
+      return;
+    }
   }
+
+  handleMovement(position);
 }
 
 function renderBoard() {
@@ -554,8 +573,12 @@ function renderStatus() {
   player2Label.textContent = playerLabel('P2');
   resetButton.disabled = state.gameMode === 'online';
   phaseIndicator.textContent = state.phase === 'placement'
-    ? 'Placement'
-    : state.piecesOnBoard[state.currentPlayer] === 3
+    && state.piecesToPlace[state.currentPlayer] > 0
+    ? hasPlacedThreePieces(state.currentPlayer)
+      ? 'Placement or movement'
+      : 'Placement'
+    : state.piecesToPlace[state.currentPlayer] === 0
+      && state.piecesOnBoard[state.currentPlayer] === 3
       ? 'Flying'
       : 'Movement';
 
@@ -575,10 +598,19 @@ function renderStatus() {
     statusMessage.textContent = state.removalMode
       ? 'Computer formed a mill and is choosing a piece to remove.'
       : 'Computer is thinking...';
-  } else if (!state.removalMode && state.phase === 'placement') {
-    statusMessage.textContent = `${playerLabel(state.currentPlayer)}, place a piece.`;
-  } else if (!state.removalMode && state.phase === 'movement') {
-    const mode = state.piecesOnBoard[state.currentPlayer] === 3 ? 'fly' : 'move';
+  } else if (
+    !state.removalMode
+    && state.phase === 'placement'
+    && state.piecesToPlace[state.currentPlayer] > 0
+  ) {
+    statusMessage.textContent = hasPlacedThreePieces(state.currentPlayer)
+      ? `${playerLabel(state.currentPlayer)}, place a new piece or select one to move.`
+      : `${playerLabel(state.currentPlayer)}, place a piece.`;
+  } else if (!state.removalMode) {
+    const mode = state.piecesToPlace[state.currentPlayer] === 0
+      && state.piecesOnBoard[state.currentPlayer] === 3
+      ? 'fly'
+      : 'move';
     statusMessage.textContent = `${playerLabel(state.currentPlayer)}, select a piece to ${mode}.`;
   }
 }
@@ -917,8 +949,18 @@ function handleOnlinePositionClick(position) {
     return;
   }
 
-  if (state.phase === 'placement') {
+  if (
+    state.phase === 'placement'
+    && state.piecesToPlace[state.currentPlayer] > 0
+    && state.selected === null
+    && state.board[position] === null
+  ) {
     submitOnlineAction({ type: 'place', position });
+    return;
+  }
+
+  if (state.phase === 'placement' && !hasPlacedThreePieces(state.currentPlayer)) {
+    statusMessage.textContent = 'Place three pieces before moving one.';
     return;
   }
 
@@ -1156,11 +1198,14 @@ function countMillFormingMoves(board, player) {
 }
 
 function countImmediateMillThreats(board, player) {
-  if (state.piecesToPlace[player] > 0) {
-    return millCompletingPlacements(board, player).length;
-  }
+  const placementThreats = state.piecesToPlace[player] > 0
+    ? millCompletingPlacements(board, player).length
+    : 0;
+  const movementThreats = hasPlacedThreePieces(player)
+    ? countMillFormingMoves(board, player)
+    : 0;
 
-  return countMillFormingMoves(board, player);
+  return placementThreats + movementThreats;
 }
 
 function chooseComputerPlacement() {
@@ -1236,7 +1281,7 @@ function performComputerTurn() {
     return;
   }
 
-  if (state.phase === 'placement') {
+  if (state.phase === 'placement' && state.piecesToPlace.P2 > 0) {
     handlePlacement(chooseComputerPlacement());
     return;
   }

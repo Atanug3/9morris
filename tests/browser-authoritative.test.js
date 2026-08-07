@@ -186,6 +186,65 @@ const tests = `
     'The server-returned state was not applied',
   );
 
+  rpcCalls.length = 0;
+  onlineSavePending = false;
+  state.board = Array(24).fill(null);
+  state.board[0] = 'P1';
+  state.board[3] = 'P1';
+  state.board[6] = 'P1';
+  state.currentPlayer = 'P1';
+  state.phase = 'placement';
+  state.piecesToPlace = { P1: 6, P2: 6 };
+  state.piecesOnBoard = { P1: 3, P2: 3 };
+  state.selected = null;
+  onlineGame.revision = 5;
+  onlineGame.game_state = serializeGameState();
+
+  handleOnlinePositionClick(0);
+  assert(state.selected === 0, 'A placed piece was not selectable after three placements');
+  handleOnlinePositionClick(1);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert(
+    rpcCalls.length === 1
+      && rpcCalls[0].args.p_action.type === 'move'
+      && rpcCalls[0].args.p_action.from === 0
+      && rpcCalls[0].args.p_action.to === 1,
+    'Mixed placement phase did not submit a movement action',
+  );
+
+  rpcCalls.length = 0;
+  onlineSavePending = false;
+  state.board = Array(24).fill(null);
+  state.board[0] = 'P1';
+  state.board[3] = 'P1';
+  state.board[6] = 'P1';
+  state.currentPlayer = 'P1';
+  state.phase = 'placement';
+  state.piecesToPlace = { P1: 6, P2: 6 };
+  state.piecesOnBoard = { P1: 3, P2: 3 };
+  state.selected = null;
+  onlineGame.revision = 6;
+  onlineGame.game_state = serializeGameState();
+
+  handleOnlinePositionClick(2);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert(
+    rpcCalls.length === 1
+      && rpcCalls[0].args.p_action.type === 'place'
+      && rpcCalls[0].args.p_action.position === 2,
+    'Mixed placement phase did not preserve placement actions',
+  );
+
+  resetBoardState();
+  state.phase = 'placement';
+  state.currentPlayer = 'P1';
+  state.piecesToPlace = { P1: 6, P2: 0 };
+  state.piecesOnBoard = { P1: 3, P2: 2 };
+  checkWinner();
+  assert(state.winner === 'P1', 'Mixed-phase local win detection was skipped');
+
   console.log('Authoritative browser tests passed.');
 })()
 `;

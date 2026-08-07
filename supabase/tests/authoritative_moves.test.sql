@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(34);
+select plan(40);
 
 insert into auth.users (
   id, email, aud, role, raw_app_meta_data, raw_user_meta_data, created_at, updated_at
@@ -226,6 +226,108 @@ select lives_ok(
     '{"type":"remove","position":3}'
   )$$,
   'the mill owner can remove a valid opponent piece'
+);
+
+update public.games
+set revision = 70,
+    status = 'active',
+    game_state = jsonb_build_object(
+      'board',
+      '["P1",null,"P2","P1",null,"P2",null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]'::jsonb,
+      'currentPlayer', 'P1',
+      'phase', 'placement',
+      'piecesToPlace', '{"P1":7,"P2":7}'::jsonb,
+      'piecesOnBoard', '{"P1":2,"P2":2}'::jsonb,
+      'moveHistory', '{"P1":[],"P2":[]}'::jsonb,
+      'removalMode', false,
+      'winner', null
+    )
+where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+select throws_ok(
+  $$select * from public.submit_game_action(
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 70,
+    '{"type":"move","from":0,"to":1}'
+  )$$,
+  'P0001',
+  'A piece cannot be moved until three pieces have been placed',
+  'movement is rejected before the player has placed three pieces'
+);
+
+update public.games
+set revision = 80,
+    game_state = jsonb_build_object(
+      'board',
+      '["P1",null,"P2","P1",null,"P2","P1",null,"P2",null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]'::jsonb,
+      'currentPlayer', 'P1',
+      'phase', 'placement',
+      'piecesToPlace', '{"P1":6,"P2":6}'::jsonb,
+      'piecesOnBoard', '{"P1":3,"P2":3}'::jsonb,
+      'moveHistory', '{"P1":[],"P2":[]}'::jsonb,
+      'removalMode', false,
+      'winner', null
+    )
+where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+select throws_ok(
+  $$select * from public.submit_game_action(
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 80,
+    '{"type":"move","from":0,"to":23}'
+  )$$,
+  'P0001',
+  'The destination is not adjacent',
+  'three placed pieces allow movement but not flying'
+);
+select lives_ok(
+  $$select * from public.submit_game_action(
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 80,
+    '{"type":"move","from":0,"to":1}'
+  )$$,
+  'a player can move after placing three pieces'
+);
+select set_config(
+  'request.jwt.claim.sub',
+  '22222222-2222-2222-2222-222222222222',
+  true
+);
+select lives_ok(
+  $$select * from public.submit_game_action(
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 81,
+    '{"type":"place","position":4}'
+  )$$,
+  'the next player can still place a new piece after reaching three'
+);
+select set_config(
+  'request.jwt.claim.sub',
+  '11111111-1111-1111-1111-111111111111',
+  true
+);
+
+update public.games
+set revision = 90,
+    status = 'active',
+    game_state = jsonb_build_object(
+      'board',
+      '["P1",null,"P2","P1",null,"P2","P1",null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]'::jsonb,
+      'currentPlayer', 'P1',
+      'phase', 'placement',
+      'piecesToPlace', '{"P1":6,"P2":0}'::jsonb,
+      'piecesOnBoard', '{"P1":3,"P2":2}'::jsonb,
+      'moveHistory', '{"P1":[],"P2":[]}'::jsonb,
+      'removalMode', false,
+      'winner', null
+    )
+where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+select lives_ok(
+  $$select * from public.submit_game_action(
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 90,
+    '{"type":"place","position":4}'
+  )$$,
+  'placement can finish an opponent who has no reserves and fewer than three pieces'
+);
+select is(
+  (select game_state ->> 'winner' from public.games
+   where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  'P1',
+  'mixed-phase win detection uses the opponent remaining placement count'
 );
 
 update public.games

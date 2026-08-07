@@ -42,13 +42,16 @@ Protected assets:
 | INIT-01 | Create a room with a forged initial board and winner | Canonical empty board is stored | pgTAP |
 | RULE-01 | Legal placement and alternating turns | Accepted | pgTAP |
 | RULE-02 | Out-of-turn placement | Rejected | pgTAP |
-| RULE-03 | Non-adjacent move with more than three pieces | Rejected | pgTAP |
-| RULE-04 | Flying with exactly three pieces | Accepted | pgTAP |
-| RULE-05 | Third back-and-forth cycle | Rejected | pgTAP |
-| RULE-06 | Mill creation and capture authorization | Enforced | pgTAP |
-| RULE-07 | Capture a mill piece while another piece is available | Rejected | pgTAP |
-| RULE-08 | Capture when all opponent pieces are in mills | Accepted | pgTAP |
-| RULE-09 | Winning capture | Winner and finished status recorded | pgTAP |
+| RULE-03 | Move before placing three pieces | Rejected | pgTAP |
+| RULE-04 | Adjacent move after placing three while placement remains | Accepted | pgTAP |
+| RULE-05 | Non-adjacent move before all pieces are placed | Rejected | pgTAP |
+| RULE-06 | Placement remains available after three pieces | Accepted | pgTAP |
+| RULE-07 | Flying with exactly three pieces after all are placed | Accepted | pgTAP |
+| RULE-08 | Third back-and-forth cycle | Rejected | pgTAP |
+| RULE-09 | Mill creation and capture authorization | Enforced | pgTAP |
+| RULE-10 | Capture a mill piece while another piece is available | Rejected | pgTAP |
+| RULE-11 | Capture when all opponent pieces are in mills | Accepted | pgTAP |
+| RULE-12 | Winning capture | Winner and finished status recorded | pgTAP |
 | INPUT-01 | Missing, non-numeric, out-of-range, or unknown action values | Rejected without mutation | pgTAP |
 | REV-01 | Replay an old revision | Rejected | pgTAP |
 | LIFE-01 | Submit an action after game completion | Rejected | pgTAP |
