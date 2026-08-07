@@ -26,10 +26,10 @@ All players must sign in with Google or GitHub. Online authentication, rooms, pe
 ### 1. Create the database
 
 1. Create a free project at [Supabase](https://supabase.com/).
-2. Open **SQL Editor** in the Supabase dashboard.
-3. Run the complete contents of `supabase-schema.sql`.
+2. Install the Supabase CLI and link the project.
+3. Apply the repository migrations with `supabase db push`.
 
-The script creates the `games` table, participant-only row-level security, room RPC functions, turn/revision checks, and the Realtime publication.
+See [SETUP.md](SETUP.md) for the complete migration and baseline procedure.
 
 ### 2. Configure the website
 
@@ -81,8 +81,9 @@ The repository includes `wrangler.jsonc` and `.assetsignore`. Cloudflare deploys
 Push a configured version to both repositories:
 
 ```powershell
-git add index.html styles.css script.js supabase-config.js supabase-schema.sql README.md .assetsignore
-git commit -m "Add authenticated online multiplayer"
+git add index.html styles.css script.js supabase-config.js README.md SETUP.md `
+  supabase tests .assetsignore
+git commit -m "Add server-authoritative online multiplayer"
 git push personal main
 git push origin main
 ```
@@ -99,6 +100,18 @@ The personal repository triggers the automatic Cloudflare deployment.
 
 Players can reload an active room using its invite URL.
 
+## Tests
+
+With the local Supabase Docker stack running:
+
+```powershell
+.\tests\run-local.ps1
+```
+
+This runs the browser action-boundary test and the pgTAP database rule/security suite.
+See [SECURITY_TEST_PLAN.md](SECURITY_TEST_PLAN.md) for staging, production, privacy,
+concurrency, abuse, and go-live coverage.
+
 ## Security note
 
-Supabase enforces authentication, room membership, turn ownership, and optimistic revision checks. Morris move legality is also checked by the browser game engine; this project is intended for friendly play rather than adversarial or prize-based competition.
+For online games, Supabase computes the resulting state from a small action (`place`, `move`, or `remove`). It enforces authentication, room membership, turn ownership, revision ordering, adjacency, flying, repetition, mills, captures, phase changes, and wins. The browser cannot replace the stored board.

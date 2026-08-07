@@ -52,23 +52,27 @@ The database password is an administrative secret. Do not place it in browser co
 
 ## 2. Create the database schema
 
-1. Open the Supabase project.
-2. Select **SQL Editor**.
-3. Select **New query**.
-4. Copy the complete contents of `supabase-schema.sql`.
-5. Paste it into the query editor.
-6. Select **Run**.
+Database schema is managed through versioned migrations in `supabase/migrations`.
 
-Run the file as one complete query. It is designed to be safe to rerun when functions or policies need updating.
+Install the Supabase CLI, then run from the repository root:
 
-The script creates:
+```powershell
+supabase login
+supabase link --project-ref ethefekgxcdsxhorfnnp
+supabase db push
+```
+
+Do not make later production schema changes through SQL Editor or Table Editor. Those changes bypass migration history and can make future `db push` operations fail.
+
+The migrations create:
 
 - The `public.games` table.
 - The participant-only RLS policy.
 - `create_game` for private room creation.
 - `join_game` for assigning Player 2.
-- `submit_game_state` for turn and revision-controlled updates.
+- `submit_game_action` for complete server-side rule validation.
 - `leave_game` for explicitly abandoning a room.
+- Private rule helpers for adjacency, mills, flying, repetition, captures, and legal-move detection.
 - The `supabase_realtime` publication entry for `games`.
 
 ### Verify the schema
@@ -85,7 +89,7 @@ In **Database → Functions**, confirm:
 
 - `create_game`
 - `join_game`
-- `submit_game_state`
+- `submit_game_action`
 - `leave_game`
 
 In **Database → Publications** or **Replication**, confirm that `games` is enabled under `supabase_realtime`.
@@ -308,15 +312,15 @@ Cloudflare automatically builds from the personal GitHub repository.
 Commit configuration and documentation:
 
 ```powershell
-git add supabase-config.js supabase-schema.sql SETUP.md
-git commit -m "Document Supabase and OAuth setup"
+git add supabase-config.js SETUP.md supabase tests
+git commit -m "Add server-authoritative Supabase migrations"
 git push personal main
 git push origin main
 ```
 
 Never add `9morris-cloudflare.zip` to the commit.
 
-The `.assetsignore` file publishes only browser assets. `supabase-schema.sql` and this guide remain in Git but are not served as website assets.
+The `.assetsignore` file publishes only browser assets. Database migrations and this guide remain in Git but are not served as website assets.
 
 ## 13. Test online multiplayer
 
@@ -353,12 +357,6 @@ Cause: Supabase linked Google and GitHub identities with the same verified email
 
 Fix: Use a second account with a different verified email.
 
-### `function gen_random_bytes(integer) does not exist`
-
-Cause: An older version of `create_game` used an extension-dependent function.
-
-Fix: Run the current complete `supabase-schema.sql` again. It uses `gen_random_uuid()`.
-
 ### Player 2 joins but Player 1 does not update
 
 1. Confirm `games` is enabled under `supabase_realtime`.
@@ -377,9 +375,32 @@ Create a new room. The current application abandons a room only when a participa
 ### Room creation fails
 
 1. Confirm the user is signed in.
-2. Confirm all four database functions exist.
-3. Rerun the complete current schema.
-4. Review Supabase logs for the exact function error.
+2. Confirm `create_game`, `join_game`, `submit_game_action`, and `leave_game` exist.
+3. Run `supabase migration list` and confirm local and remote versions match.
+4. Run `supabase db push` if a migration is pending.
+5. Review Supabase logs for the exact function error.
+
+## Local security and rule tests
+
+Start the local Supabase Docker stack:
+
+```powershell
+supabase start
+```
+
+Run all repository tests:
+
+```powershell
+.\tests\run-local.ps1
+```
+
+The test command checks:
+
+- The online browser submits actions rather than replacement board state.
+- Direct table writes and anonymous reads are denied.
+- Private rule helpers cannot be called by authenticated clients.
+- Out-of-turn and stale-revision actions are rejected.
+- Placement, movement, flying, repetition, mills, captures, and wins are enforced.
 
 ## Security checklist
 
@@ -393,4 +414,4 @@ Create a new room. The current application abandons a room only when a participa
 - OAuth secrets exist only in provider and Supabase dashboards.
 - Database password is stored only in a password manager.
 
-The server checks authentication, membership, turn ownership, and concurrent revisions. Detailed Morris move legality is still validated by the browser, so online mode is intended for friendly play rather than adversarial or prize-based competition.
+For online mode, the server computes every accepted state transition. Client-side checks remain only for responsive user feedback and cannot authorize an illegal move.

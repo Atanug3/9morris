@@ -492,6 +492,11 @@ function handlePositionClick(position) {
     return;
   }
 
+  if (state.gameMode === 'online') {
+    handleOnlinePositionClick(position);
+    return;
+  }
+
   if (state.removalMode) {
     removeOpponentPiece(position);
     return;
@@ -587,9 +592,6 @@ function render() {
 
 function completeStateChange() {
   render();
-  if (state.gameMode === 'online') {
-    persistOnlineState();
-  }
 }
 
 function resetGame() {
@@ -909,11 +911,61 @@ async function joinOnlineRoom(code) {
   subscribeToOnlineGame(data.id);
 }
 
-async function persistOnlineState() {
+function handleOnlinePositionClick(position) {
+  if (state.removalMode) {
+    submitOnlineAction({ type: 'remove', position });
+    return;
+  }
+
+  if (state.phase === 'placement') {
+    submitOnlineAction({ type: 'place', position });
+    return;
+  }
+
+  if (state.selected === null) {
+    if (state.board[position] !== state.currentPlayer) {
+      statusMessage.textContent = 'Select one of your own pieces to move.';
+      return;
+    }
+
+    state.selected = position;
+    statusMessage.textContent = `Selected position ${position + 1}. Choose a destination.`;
+    renderBoard();
+    return;
+  }
+
+  if (position === state.selected) {
+    state.selected = null;
+    render();
+    return;
+  }
+
+  const from = state.selected;
+  state.selected = null;
+  submitOnlineAction({ type: 'move', from, to: position });
+}
+
+function playAcceptedOnlineAction(action, previousState, nextState) {
+  if (action.type === 'remove') {
+    playSound('capture');
+  } else {
+    playSound('move');
+  }
+
+  if (!previousState.removalMode && nextState.removalMode) {
+    playSound('mill');
+  }
+  if (!previousState.winner && nextState.winner) {
+    playSound('win');
+  }
+}
+
+async function submitOnlineAction(action) {
   if (!onlineGame || onlineGame.status !== 'active' || onlineSavePending) {
     return;
   }
 
+  const previousState = serializeGameState();
   onlineSavePending = true;
   onlineNotice = '';
   if (onlineSaveTimer !== null) {
@@ -923,17 +975,17 @@ async function persistOnlineState() {
   render();
 
   const { data, error } = await supabaseClient
-    .rpc('submit_game_state', {
+    .rpc('submit_game_action', {
       p_game_id: onlineGame.id,
       p_expected_revision: onlineGame.revision,
-      p_game_state: serializeGameState(),
-      p_status: state.winner ? 'finished' : 'active',
+      p_action: action,
     })
     .single();
 
   window.clearTimeout(onlineSaveTimer);
   onlineSaveTimer = null;
   if (!error) {
+    playAcceptedOnlineAction(action, previousState, data.game_state);
     applyOnlineGame(data);
     return;
   }
